@@ -9,6 +9,7 @@ import pandas as pd
 from multiprocessing import Pool, Process, Queue
 from datetime import datetime
 from functools import reduce
+import numpy as np
 
 def get_page(url):
     html = requests.get(url)
@@ -85,13 +86,48 @@ def get_url_list():
     return urllist
 
 
-def get_airport_code():
+def get_airport_code(urllist):
     pool = Pool(processes=20)
     all_airport = pool.map(get_page2, urllist)
     pool.close()
     pool.join()
     all_airport = reduce(lambda x, y: x + y, all_airport)
     return all_airport
+
+
+def geocode(city, address):
+    parameters = {'address': address, 'city': city, 'key': '895d8c6afa27ba2b57dd757ab490e16d'}
+    base = 'http://restapi.amap.com/v3/geocode/geo'
+    response = requests.get(base, parameters)
+    #print(response.json())
+    answer = response.json()
+    return answer
+
+
+def get_geoinfo(parameters):
+    j_geo = geocode(parameters[0], parameters[1])
+    default_geo = {'address': parameters[1], 'formatted_address': '',
+                   'country': '', 'province': '',
+                   'citycode': '', 'city': '',
+                   'district': '', 'township': [],
+                   'neighborhood': {'name': [], 'type': []}, 'building': {'name': [], 'type': []},
+                   'adcode': '', 'street': [], 'number': [],
+                   'location': ',', 'level': ''}
+    '''
+    geo_dict字典格式
+    'formatted_address'   #标准化地址
+    'province'            #省
+    'city'                #市
+    'district'            #区
+    'location'            #经度,纬度
+    '''
+    if j_geo['status'] == '1' and j_geo['count'] != '0':
+        geo_dict = j_geo['geocodes'][0]
+        geo_dict['address'] = parameters[1]
+        return geo_dict
+    else:
+        return default_geo
+
 
 if __name__ == '__main__':
     '''
@@ -104,6 +140,7 @@ if __name__ == '__main__':
     df.to_csv(r'./airport_code.csv')
     '''
 
+    ''''
     #spider 2
     print('start getting URL list')
     urllist = get_url_list()
@@ -115,9 +152,25 @@ if __name__ == '__main__':
 
     urllist = pd.read_csv('./url.csv', index_col=0)
     print('the spider is getting {} pages'.format(len(urllist)))
-    all_airport = get_airport_code()
+    all_airport = get_airport_code(urllist)
 
     print('spider1 end, the spider has gotten {} airports'.format(len(all_airport)))
     df = pd.DataFrame(all_airport, columns=['所属城市', '所属城市英文', '机场名称', '机场英文名称', '三字代码', '四字代码'])
     df.to_csv(r'./airport.csv')
     print('airport code saved')
+    '''
+
+    df_airport = pd.read_csv('./airport.csv', index_col=0, header=0)
+    df_test = df_airport.copy()
+    df_test.fillna('', inplace=True)
+
+    pool = Pool(processes=8)
+    test = pool.map(get_geoinfo, zip(df_test['所属城市'], df_test['机场名称']))
+    pool.close()
+    pool.join()
+
+    df_geo = pd.DataFrame([[x['country'], x['province'], x['city'], x['location'].split(',')[0], x['location'].split(',')[1]]
+                           for x in test], columns=['国家', '省份', '城市', '经度', '纬度'])
+    df_test[['国家', '省份', '城市', '经度', '纬度']] = df_geo.copy()
+    print(df_test)
+    df_test.to_csv(r'./test.csv')
