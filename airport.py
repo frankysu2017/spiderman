@@ -75,24 +75,24 @@ def get_maxpage(url):
 
 
 def get_url_list():
-    urllist = []
+    urls = []
     nationlist = get_nationlist()
     pool = Pool(processes=8)
     nation_max = pool.map(get_maxpage, nationlist)
     pool.close()
     pool.join()
     for max_num, nation in zip(nation_max, nationlist):
-        urllist.extend(['{}__page-{}'.format(nation, x) for x in range(1, max_num+1)])
-    return urllist
+        urls.extend(['{}__page-{}'.format(nation, x) for x in range(1, max_num+1)])
+    return urls
 
 
-def get_airport_code(urllist):
+def get_airport_code(ulist):
     pool = Pool(processes=20)
-    all_airport = pool.map(get_page2, urllist)
+    airport_list = pool.map(get_page2, ulist)
     pool.close()
     pool.join()
-    all_airport = reduce(lambda x, y: x + y, all_airport)
-    return all_airport
+    airport_list = reduce(lambda x, y: x + y, airport_list)
+    return airport_list
 
 
 def geocode(city, address):
@@ -138,9 +138,7 @@ if __name__ == '__main__':
         all.extend(get_page(url))
     df = pd.DataFrame(all, columns=['所属城市', '三字代码', '所属国家', '国家代码', '四字代码', '机场名称', '英文名称'])
     df.to_csv(r'./airport_code.csv')
-    '''
 
-    ''''
     #spider 2
     print('start getting URL list')
     urllist = get_url_list()
@@ -149,28 +147,39 @@ if __name__ == '__main__':
     df_page = pd.DataFrame(urllist)
     print('save the URL list')
     df_page.to_csv(r'./url.csv')
+    '''
 
-    urllist = pd.read_csv('./url.csv', index_col=0)
+    '''
+    urllist = pd.read_csv('./url.csv', index_col=0, header=0)['0']
     print('the spider is getting {} pages'.format(len(urllist)))
-    all_airport = get_airport_code(urllist)
-
+    all_airport = get_airport_code(urllist[:12])
     print('spider1 end, the spider has gotten {} airports'.format(len(all_airport)))
     df = pd.DataFrame(all_airport, columns=['所属城市', '所属城市英文', '机场名称', '机场英文名称', '三字代码', '四字代码'])
     df.to_csv(r'./airport.csv')
     print('airport code saved')
-    '''
 
     df_airport = pd.read_csv('./airport.csv', index_col=0, header=0)
-    df_test = df_airport.copy()
+    df_test = df_airport[:].copy()
     df_test.fillna('', inplace=True)
-
     pool = Pool(processes=8)
     test = pool.map(get_geoinfo, zip(df_test['所属城市'], df_test['机场名称']))
     pool.close()
     pool.join()
-
-    df_geo = pd.DataFrame([[x['country'], x['province'], x['city'], x['location'].split(',')[0], x['location'].split(',')[1]]
-                           for x in test], columns=['国家', '省份', '城市', '经度', '纬度'])
-    df_test[['国家', '省份', '城市', '经度', '纬度']] = df_geo.copy()
+    
+    df_geo = pd.DataFrame([[x['formatted_address'], x['country'], x['province'], x['city'], x['location'].split(',')[0], x['location'].split(',')[1]]
+                           for x in test], columns=['标准地址', '国家', '省份', '城市', '经度', '纬度'])
+    df_test[['标准地址', '国家', '省份', '城市', '经度', '纬度']] = df_geo.copy()
     print(df_test)
     df_test.to_csv(r'./test.csv')
+
+    '''
+    df_test = pd.read_csv(r'./test.csv', index_col=0, header=0)
+    pd.set_option('display.max_rows', None)
+    pd.set_option('display.max_columns', None)
+    arr = []
+    for row in df_test.itertuples():
+        if str(row[7]).endswith('机场'):
+            arr.append(row)
+    df = pd.DataFrame(arr).set_index(['Index']).reset_index(drop=True)
+    print(len(df))
+    df.to_csv(r'lacation.csv')
